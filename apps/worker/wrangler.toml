@@ -7,12 +7,12 @@ workers_dev = true
 # Do NOT hardcode secrets here
 
 [vars]
-WORKER_URL = "https://line-crm-worker.line-crm-api.workers.dev"
+WORKER_URL = "https://line-crm-worker.ryo-m-code.workers.dev"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "line-crm"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = "734a6682-b446-4706-8348-556fded7a5b1"
 
 [triggers]
 crons = ["*/5 * * * *"]
