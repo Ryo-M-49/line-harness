@@ -21,10 +21,13 @@ import {
   jstNow,
 } from '@line-crm/db';
 import { LineClient } from '@line-crm/line-sdk';
+import { sendAdConversions } from './ad-conversion.js';
 
-interface EventPayload {
+export interface EventPayload {
   friendId?: string;
   eventData?: Record<string, unknown>;
+  conversionEventName?: string;
+  conversionValue?: number;
 }
 
 /**
@@ -37,12 +40,21 @@ export async function fireEvent(
   lineAccessToken?: string,
   lineAccountId?: string | null,
 ): Promise<void> {
-  await Promise.allSettled([
+  const jobs: Promise<unknown>[] = [
     fireOutgoingWebhooks(db, eventType, payload),
     processScoring(db, eventType, payload),
     processAutomations(db, eventType, payload, lineAccessToken, lineAccountId),
     processNotifications(db, eventType, payload, lineAccountId),
-  ]);
+  ];
+
+  // Ad conversion postback
+  if (payload.friendId && payload.conversionEventName) {
+    jobs.push(
+      sendAdConversions(db, payload.friendId, payload.conversionEventName, payload.conversionValue),
+    );
+  }
+
+  await Promise.allSettled(jobs);
 }
 
 /** 送信Webhookへの通知 */
@@ -173,6 +185,12 @@ function matchConditions(
   // tag_id チェック
   if (conditions.tag_id !== undefined && payload.eventData) {
     if (payload.eventData.tagId !== conditions.tag_id) return false;
+  }
+
+  // keyword チェック（message_received イベント用）
+  if (conditions.keyword !== undefined && payload.eventData) {
+    const text = payload.eventData.text as string | undefined;
+    if (!text || !text.includes(conditions.keyword as string)) return false;
   }
 
   return true;

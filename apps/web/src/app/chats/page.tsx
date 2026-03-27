@@ -5,6 +5,7 @@ import { api, fetchApi } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
+import FlexPreviewComponent from '@/components/flex-preview'
 
 interface Chat {
   id: string
@@ -256,7 +257,7 @@ export default function ChatsPage() {
       if (selectedAccountId) params.accountId = selectedAccountId
       const [chatRes, friendRes] = await Promise.allSettled([
         api.chats.list(params),
-        api.friends.list({ accountId: selectedAccountId || undefined, limit: '100' }),
+        api.friends.list({ accountId: selectedAccountId || undefined, limit: '800' }),
       ])
       if (chatRes.status === 'fulfilled' && chatRes.value.success) {
         setChats(chatRes.value.data as unknown as Chat[])
@@ -429,38 +430,6 @@ export default function ChatsPage() {
                     </button>
                   )
                 })}
-                {/* Friends without chats */}
-                {allFriends
-                  .filter((f) => f.isFollowing && !chats.some((c) => c.friendId === f.id))
-                  .map((friend) => {
-                    const isSelected = selectedFriendId === friend.id
-                    return (
-                      <button
-                        key={friend.id}
-                        onClick={() => { setSelectedChatId(null); setChatDetail(null); setSelectedFriendId(friend.id); }}
-                        className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-colors ${
-                          isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          {friend.pictureUrl ? (
-                            <img src={friend.pictureUrl} alt="" className="w-10 h-10 rounded-full flex-shrink-0" />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                              <span className="text-gray-500 text-sm">{(friend.displayName || '?').charAt(0)}</span>
-                            </div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900 truncate">{friend.displayName}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">会話なし</p>
-                          </div>
-                          <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 bg-gray-100 text-gray-500">
-                            新規
-                          </span>
-                        </div>
-                      </button>
-                    )
-                  })}
               </>
             )}
           </div>
@@ -553,17 +522,9 @@ export default function ChatsPage() {
                     // メッセージ表示の分岐
                     let bubbleContent: React.ReactNode
                     if (msg.messageType === 'flex') {
-                      // Flexメッセージ — JSONをフォーマットして表示
-                      let formatted = msg.content
-                      try {
-                        formatted = JSON.stringify(JSON.parse(msg.content), null, 2)
-                      } catch { /* use raw */ }
                       bubbleContent = (
                         <div className="max-w-[300px]">
-                          <div className="text-xs font-medium mb-1 opacity-70">📋 Flex Message</div>
-                          <pre className="text-xs overflow-x-auto whitespace-pre-wrap bg-black/10 rounded p-2 max-h-[200px] overflow-y-auto" style={{ fontSize: '10px' }}>
-                            {formatted}
-                          </pre>
+                          <FlexPreviewComponent content={msg.content} maxWidth={280} />
                         </div>
                       )
                     } else if (msg.messageType === 'image') {

@@ -136,12 +136,12 @@ async function handleEvent(
                 await lineClient.replyMessage(event.replyToken, [message]);
                 console.log(`Immediate delivery: sent step ${firstStep.id} to ${userId}`);
 
-                // Log outgoing message
+                // Log outgoing message (replyMessage = 無料)
                 const logId = crypto.randomUUID();
                 await db
                   .prepare(
-                    `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
-                     VALUES (?, ?, 'outgoing', ?, ?, NULL, ?, ?)`,
+                    `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, delivery_type, created_at)
+                     VALUES (?, ?, 'outgoing', ?, ?, NULL, ?, 'reply', ?)`,
                   )
                   .bind(logId, friend.id, firstStep.message_type, firstStep.message_content, firstStep.id, jstNow())
                   .run();
@@ -208,8 +208,14 @@ async function handleEvent(
       .bind(logId, friend.id, incomingText, now)
       .run();
 
-    // チャットを作成/更新（オペレーター機能連携）
-    await upsertChatOnMessage(db, friend.id);
+    // チャットを作成/更新（ユーザーの自発的メッセージのみ unread にする）
+    // ボタンタップ等の自動応答キーワードは除外
+    const autoKeywords = ['料金', '機能', 'API', 'フォーム', 'ヘルプ', 'UUID', 'UUID連携について教えて', 'UUID連携を確認', '配信時間', '導入支援を希望します', 'アカウント連携を見る', '体験を完了する', 'BAN対策を見る', '連携確認'];
+    const isAutoKeyword = autoKeywords.some(k => incomingText === k);
+    const isTimeCommand = /(?:配信時間|配信|届けて|通知)[はを]?\s*\d{1,2}\s*時/.test(incomingText);
+    if (!isAutoKeyword && !isTimeCommand) {
+      await upsertChatOnMessage(db, friend.id);
+    }
 
     // 配信時間設定: 「配信時間は○時」「○時に届けて」等のパターンを検出
     const timeMatch = incomingText.match(/(?:配信時間|配信|届けて|通知)[はを]?\s*(\d{1,2})\s*時/);
@@ -247,6 +253,58 @@ async function handleEvent(
       }
     }
 
+    // Cross-account trigger: send message from another account via UUID
+    if (incomingText === '体験を完了する' && lineAccountId) {
+      try {
+        const friendRecord = await db.prepare('SELECT user_id FROM friends WHERE id = ?').bind(friend.id).first<{ user_id: string | null }>();
+        if (friendRecord?.user_id) {
+          // Find the same user on other accounts
+          const otherFriends = await db.prepare(
+            'SELECT f.line_user_id, la.channel_access_token FROM friends f INNER JOIN line_accounts la ON la.id = f.line_account_id WHERE f.user_id = ? AND f.line_account_id != ? AND f.is_following = 1'
+          ).bind(friendRecord.user_id, lineAccountId).all<{ line_user_id: string; channel_access_token: string }>();
+
+          for (const other of otherFriends.results) {
+            const otherClient = new LineClient(other.channel_access_token);
+            const { buildMessage: bm } = await import('../services/step-delivery.js');
+            await otherClient.pushMessage(other.line_user_id, [bm('flex', JSON.stringify({
+              type: 'bubble', size: 'giga',
+              header: { type: 'box', layout: 'vertical', paddingAll: '20px', backgroundColor: '#fffbeb',
+                contents: [{ type: 'text', text: `${friend.display_name || ''}さんへ`, size: 'lg', weight: 'bold', color: '#1e293b' }],
+              },
+              body: { type: 'box', layout: 'vertical', paddingAll: '20px',
+                contents: [
+                  { type: 'text', text: '別アカウントからのアクションを検知しました。', size: 'sm', color: '#06C755', weight: 'bold', wrap: true },
+                  { type: 'text', text: 'アカウント連携が正常に動作しています。体験ありがとうございました。', size: 'sm', color: '#1e293b', wrap: true, margin: 'md' },
+                  { type: 'separator', margin: 'lg' },
+                  { type: 'text', text: 'ステップ配信・フォーム即返信・アカウント連携・リッチメニュー・自動返信 — 全て無料、全てOSS。', size: 'xs', color: '#64748b', wrap: true, margin: 'lg' },
+                ],
+              },
+              footer: { type: 'box', layout: 'vertical', paddingAll: '16px',
+                contents: [
+                  { type: 'button', action: { type: 'message', label: '導入について相談する', text: '導入支援を希望します' }, style: 'primary', color: '#06C755' },
+                  { type: 'button', action: { type: 'uri', label: 'フィードバックを送る', uri: 'https://liff.line.me/2009554425-4IMBmLQ9?page=form&id=0c81910a-fe27-41a7-bf8c-1411a9240155' }, style: 'secondary', margin: 'sm' },
+                ],
+              },
+            }))]);
+          }
+
+          // Reply on Account ② confirming
+          await lineClient.replyMessage(event.replyToken, [buildMessage('flex', JSON.stringify({
+            type: 'bubble',
+            body: { type: 'box', layout: 'vertical', paddingAll: '20px',
+              contents: [
+                { type: 'text', text: 'Account ① にメッセージを送りました', size: 'sm', color: '#06C755', weight: 'bold', align: 'center' },
+                { type: 'text', text: 'Account ① のトーク画面を確認してください', size: 'xs', color: '#64748b', align: 'center', margin: 'md' },
+              ],
+            },
+          }))]);
+          return;
+        }
+      } catch (err) {
+        console.error('Cross-account trigger error:', err);
+      }
+    }
+
     // 自動返信チェック（このアカウントのルール + グローバルルールのみ）
     // NOTE: Auto-replies use replyMessage (free, no quota) instead of pushMessage
     // The replyToken is only valid for ~1 minute after the message event
@@ -276,12 +334,12 @@ async function handleEvent(
           const replyMsg = buildMessage(rule.response_type, expandedContent);
           await lineClient.replyMessage(event.replyToken, [replyMsg]);
 
-          // 送信ログ
+          // 送信ログ（replyMessage = 無料）
           const outLogId = crypto.randomUUID();
           await db
             .prepare(
-              `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
-               VALUES (?, ?, 'outgoing', ?, ?, NULL, NULL, ?)`,
+              `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, delivery_type, created_at)
+               VALUES (?, ?, 'outgoing', ?, ?, NULL, NULL, 'reply', ?)`,
             )
             .bind(outLogId, friend.id, rule.response_type, rule.response_content, jstNow())
             .run();
