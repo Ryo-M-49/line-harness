@@ -1,0 +1,21 @@
+services:
+  worker:
+    build: .
+    command: pnpm --filter worker exec wrangler dev --ip 0.0.0.0 --port 8787
+    ports:
+      - "8787:8787"
+    env_file: .env
+    volumes:
+      - worker-data:/app/apps/worker/.wrangler
+
+  web:
+    build: .
+    command: sh -c "pnpm -r --filter @line-crm/shared build; cd apps/web && npx next build && npx serve out -l 3001"
+    ports:
+      - "3001:3001"
+    env_file: .env
+    depends_on:
+      - worker
+
+volumes:
+  worker-data:
