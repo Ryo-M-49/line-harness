@@ -7,6 +7,11 @@ account_id = "37f8f88be4c099329e4647bda211bb9f"
 # API_KEY is set via `wrangler secret put API_KEY`
 # Do NOT hardcode secrets here
 
+# Static assets (LIFF pages) served by Workers Assets
+# SPA fallback ensures all non-API paths serve index.html
+[assets]
+not_found_handling = "single-page-application"
+
 [vars]
 WORKER_URL = "https://line-crm-worker.ryo-m-code.workers.dev"
 
@@ -14,6 +19,10 @@ WORKER_URL = "https://line-crm-worker.ryo-m-code.workers.dev"
 binding = "DB"
 database_name = "line-crm"
 database_id = "734a6682-b446-4706-8348-556fded7a5b1"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "line-harness-images"
 
 [triggers]
 crons = ["*/5 * * * *"]

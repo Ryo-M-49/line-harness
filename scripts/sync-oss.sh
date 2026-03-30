@@ -16,8 +16,9 @@ rsync -av --delete \
   --exclude='.env.local' \
   --exclude='.env' \
   --exclude='.claude' \
+  --exclude='.githooks' \
   --exclude='apps/web/out' \
-  --exclude='apps/liff/dist' \
+  --exclude='apps/worker/dist' \
   --exclude='docs/superpowers' \
   --exclude='README.md' \
   --exclude='.github/workflows' \
@@ -27,6 +28,9 @@ rsync -av --delete \
   --exclude='SPEC.md' \
   --exclude='.env.example' \
   --exclude='tsconfig.base.json' \
+  --exclude='CLAUDE.md' \
+  --exclude='.mcp.json' \
+  --exclude='*.toml.bak' \
   "$PRIVATE_DIR/" "$OSS_DIR/"
 
 # Clean secrets
@@ -36,6 +40,10 @@ find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.md" -o -name "*.toml
   -exec sed -i '' \
     -e 's|YOUR_D1_DATABASE_ID|YOUR_D1_DATABASE_ID|g' \
     -e 's|YOUR_D1_DATABASE_ID"]*"|YOUR_D1_DATABASE_ID"|g' \
+    -e 's|YOUR_ACCOUNT_ID|YOUR_ACCOUNT_ID|g' \
+    -e 's|YOUR_DEV_ACCOUNT_ID|YOUR_DEV_ACCOUNT_ID|g' \
+    -e 's|YOUR_DEV_D1_DATABASE_ID|YOUR_DEV_D1_DATABASE_ID|g' \
+    -e 's|aiagent\.mini@gmail\.com|your-email@example.com|g' \
     {} +
 
 # Verify no secrets

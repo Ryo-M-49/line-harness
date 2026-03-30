@@ -6,7 +6,9 @@ import { processStepDeliveries } from './services/step-delivery.js';
 import { processScheduledBroadcasts } from './services/broadcast.js';
 import { processReminderDeliveries } from './services/reminder-delivery.js';
 import { checkAccountHealth } from './services/ban-monitor.js';
+import { refreshLineAccessTokens } from './services/token-refresh.js';
 import { authMiddleware } from './middleware/auth.js';
+import { rateLimitMiddleware } from './middleware/rate-limit.js';
 import { webhook } from './routes/webhook.js';
 import { friends } from './routes/friends.js';
 import { tags } from './routes/tags.js';
@@ -34,10 +36,12 @@ import { trackedLinks } from './routes/tracked-links.js';
 import { forms } from './routes/forms.js';
 import { adPlatforms } from './routes/ad-platforms.js';
 import { staff } from './routes/staff.js';
+import { images } from './routes/images.js';
 
 export type Env = {
   Bindings: {
     DB: D1Database;
+    IMAGES: R2Bucket;
     LINE_CHANNEL_SECRET: string;
     LINE_CHANNEL_ACCESS_TOKEN: string;
     API_KEY: string;
@@ -57,6 +61,9 @@ const app = new Hono<Env>();
 
 // CORS — allow all origins for MVP
 app.use('*', cors({ origin: '*' }));
+
+// Rate limiting — runs before auth to block abuse early
+app.use('*', rateLimitMiddleware);
 
 // Auth middleware — skips /webhook and /docs automatically
 app.use('*', authMiddleware);
@@ -90,11 +97,15 @@ app.route('/', trackedLinks);
 app.route('/', forms);
 app.route('/', adPlatforms);
 app.route('/', staff);
+app.route('/', images);
 
 // Short link: /r/:ref → landing page with LINE open button
 app.get('/r/:ref', (c) => {
   const ref = c.req.param('ref');
-  const liffUrl = c.env.LIFF_URL || 'https://liff.line.me/2009554425-4IMBmLQ9';
+  const liffUrl = c.env.LIFF_URL;
+  if (!liffUrl) {
+    return c.json({ error: 'LIFF_URL is not configured. Set it via wrangler secret put LIFF_URL.' }, 500);
+  }
   const target = `${liffUrl}?ref=${encodeURIComponent(ref)}`;
 
   return c.html(`<!DOCTYPE html>
@@ -125,8 +136,17 @@ h1{font-size:28px;font-weight:800;margin-bottom:8px}
 </html>`);
 });
 
-// 404 fallback
-app.notFound((c) => c.json({ success: false, error: 'Not found' }, 404));
+// Convenience redirect for /book path
+app.get('/book', (c) => c.redirect('/?page=book'));
+
+// 404 fallback — JSON for API paths, plain for others (Workers Assets SPA fallback handles it)
+app.notFound((c) => {
+  const path = new URL(c.req.url).pathname;
+  if (path.startsWith('/api/') || path === '/webhook' || path === '/docs' || path === '/openapi.json') {
+    return c.json({ success: false, error: 'Not found' }, 404);
+  }
+  return c.notFound();
+});
 
 // Scheduled handler for cron triggers — runs for all active LINE accounts
 async function scheduled(
@@ -159,6 +179,7 @@ async function scheduled(
     );
   }
   jobs.push(checkAccountHealth(env.DB));
+  jobs.push(refreshLineAccessTokens(env.DB));
 
   await Promise.allSettled(jobs);
 }

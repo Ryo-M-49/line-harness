@@ -51,6 +51,7 @@ friends.get('/api/friends', async (c) => {
     const offset = Number(c.req.query('offset') ?? '0');
     const tagId = c.req.query('tagId');
     const lineAccountId = c.req.query('lineAccountId');
+    const search = c.req.query('search');
 
     const db = c.env.DB;
 
@@ -64,6 +65,19 @@ friends.get('/api/friends', async (c) => {
     if (lineAccountId) {
       conditions.push('f.line_account_id = ?');
       binds.push(lineAccountId);
+    }
+    if (search) {
+      conditions.push('f.display_name LIKE ?');
+      binds.push(`%${search}%`);
+    }
+    // Metadata filters: ?metadata.key=value (e.g. ?metadata.monthly_cost=〜100万円)
+    const url = new URL(c.req.url);
+    for (const [key, value] of url.searchParams.entries()) {
+      if (key.startsWith('metadata.')) {
+        const metaKey = key.slice('metadata.'.length);
+        conditions.push(`json_extract(f.metadata, '$.' || ?) = ?`);
+        binds.push(metaKey, value);
+      }
     }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -292,6 +306,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
     const body = await c.req.json<{
       messageType?: string;
       content: string;
+      altText?: string;
     }>();
 
     if (!body.content) {
@@ -322,7 +337,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
       c.env.WORKER_URL || new URL(c.req.url).origin,
     );
 
-    const message = buildMessage(tracked.messageType, tracked.content);
+    const message = buildMessage(tracked.messageType, tracked.content, body.altText);
     await lineClient.pushMessage(friend.line_user_id, [message]);
 
     // Log outgoing message

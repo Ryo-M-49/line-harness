@@ -37,6 +37,12 @@ export function registerBroadcast(server: McpServer): void {
         .string()
         .optional()
         .describe("ISO 8601 datetime to schedule. Omit to send immediately."),
+      altText: z
+        .string()
+        .optional()
+        .describe(
+          "Custom notification preview text for Flex Messages (shown on lock screen). If omitted, auto-extracted from Flex content.",
+        ),
       accountId: z
         .string()
         .optional()
@@ -50,6 +56,7 @@ export function registerBroadcast(server: McpServer): void {
       targetTagId,
       segmentConditions,
       scheduledAt,
+      altText,
       accountId,
     }) => {
       try {
@@ -131,6 +138,7 @@ export function registerBroadcast(server: McpServer): void {
             messageContent: trackedContent,
             targetType: "all",
             lineAccountId: accountId,
+            altText,
           });
 
           try {
@@ -173,6 +181,7 @@ export function registerBroadcast(server: McpServer): void {
           targetTagId,
           scheduledAt,
           lineAccountId: accountId,
+          altText,
         });
 
         const result = scheduledAt

@@ -45,6 +45,8 @@ export interface FriendListParams {
   limit?: number
   offset?: number
   tagId?: string
+  search?: string
+  metadata?: Record<string, string>
   accountId?: string
 }
 
@@ -164,6 +166,7 @@ export interface CreateBroadcastInput {
   targetType: 'all' | 'tag'
   targetTagId?: string
   scheduledAt?: string
+  altText?: string
 }
 
 export interface UpdateBroadcastInput {
@@ -376,4 +379,22 @@ export interface StepDefinition {
   delay: string
   type: MessageType
   content: string
+}
+
+// ─── Images ─────────────────────────────────────────────
+export interface UploadedImage {
+  id: string
+  key: string
+  url: string
+  mimeType: string
+  size: number
+}
+
+export interface UploadImageInput {
+  /** Base64-encoded image data (with or without data URI prefix) */
+  data: string
+  /** MIME type, e.g. "image/png". Defaults to "image/png" */
+  mimeType?: string
+  /** Optional original filename */
+  filename?: string
 }

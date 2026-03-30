@@ -37,13 +37,18 @@ function detectLiffId(): string {
   return import.meta.env?.VITE_LIFF_ID || '';
 }
 const LIFF_ID = detectLiffId();
-const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8787';
+if (!LIFF_ID && !new URLSearchParams(window.location.search).get('liffId')) {
+  throw new Error(
+    'VITE_LIFF_ID is not set and no liffId query param provided. ' +
+    'Set VITE_LIFF_ID in .env (local) or GitHub Secrets (CI).'
+  )
+}
 const UUID_STORAGE_KEY = 'lh_uuid';
 // LINE公式アカウントの友だち追加URL（LINE Developers Console → Messaging API → Bot basic ID）
 const BOT_BASIC_ID = import.meta.env?.VITE_BOT_BASIC_ID || '';
 
 function apiCall(path: string, options?: RequestInit): Promise<Response> {
-  return fetch(`${API_URL}${path}`, {
+  return fetch(path, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -150,11 +155,12 @@ function showCompletion(profile: { displayName: string; pictureUrl?: string }, i
     </div>
   `;
 
-  // 2秒後にトーク画面に遷移
-  setTimeout(() => {
-    // LINE内でもブラウザでも、トーク画面URLに遷移
-    window.location.href = 'https://line.me/R/oaMessage/@086cdqiw/';
-  }, 2000);
+  // 2秒後にトーク画面に遷移（BOT_BASIC_ID が設定されている場合のみ）
+  if (BOT_BASIC_ID) {
+    setTimeout(() => {
+      window.location.href = `https://line.me/R/oaMessage/${BOT_BASIC_ID}/`;
+    }, 2000);
+  }
 }
 
 function showError(message: string) {
